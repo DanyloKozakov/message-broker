@@ -28,8 +28,8 @@ function hasId(value) {
   return value !== undefined && value !== null && String(value).length > 0;
 }
 
-export function createApp({ handler }) {
-  const coordinator = new WorkerCoordinator({ handler });
+export function createApp({ handler, allowedWorkerIds, logger = console }) {
+  const coordinator = new WorkerCoordinator({ handler, allowedWorkerIds, logger });
 
   return http.createServer(async (request, response) => {
     const url = new URL(request.url, "http://localhost");
@@ -43,7 +43,10 @@ export function createApp({ handler }) {
         }
 
         const result = coordinator.submit(body.id);
-        sendJson(response, result.accepted === false ? 409 : 202, result);
+        const statusCode = result.reason === "not_allowed"
+          ? 403
+          : result.accepted === false ? 409 : 202;
+        sendJson(response, statusCode, result);
         return;
       }
 
@@ -54,7 +57,8 @@ export function createApp({ handler }) {
           return;
         }
 
-        sendJson(response, 200, coordinator.getStatus(id));
+        const result = coordinator.getStatus(id);
+        sendJson(response, result.reason === "not_allowed" ? 403 : 200, result);
         return;
       }
 

@@ -3,13 +3,22 @@ import { afterEach, test } from "node:test";
 import { createApp } from "../src/app.js";
 
 const servers = [];
+const silentLogger = {
+  info() {},
+  warn() {},
+  error() {}
+};
 
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => new Promise((resolve) => server.close(resolve))));
 });
 
-async function start(handler) {
-  const server = createApp({ handler });
+async function start(handler, options = {}) {
+  const server = createApp({
+    handler,
+    allowedWorkerIds: options.allowedWorkerIds ?? ["worker-a", "worker-b"],
+    logger: options.logger ?? silentLogger
+  });
   servers.push(server);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address();
@@ -70,22 +79,26 @@ test("starts a fresh round after handling completes", async () => {
   const handledRounds = [];
   const baseUrl = await start(async ({ round }) => handledRounds.push(round));
 
-  await submit(baseUrl, 1);
-  await submit(baseUrl, 2);
+  await submit(baseUrl, "worker-a");
+  await submit(baseUrl, "worker-b");
   await new Promise((resolve) => setImmediate(resolve));
 
-  const next = await submit(baseUrl, 1);
+  const next = await submit(baseUrl, "worker-a");
   const nextBody = await next.json();
   assert.equal(nextBody.round, 2);
   assert.equal(nextBody.status, "waiting");
   assert.deepEqual(handledRounds, [1]);
 });
 
-test("accepts arbitrary IDs and validates only that an ID is present", async () => {
+test("rejects IDs outside the allow-list on both endpoints", async () => {
   const baseUrl = await start(async () => {});
 
   const arbitrary = await submit(baseUrl, "anything-at-all");
-  assert.equal(arbitrary.status, 202);
+  assert.equal(arbitrary.status, 403);
+  assert.equal((await arbitrary.json()).reason, "not_allowed");
+
+  const status = await fetch(`${baseUrl}/status?id=anything-at-all`);
+  assert.equal(status.status, 403);
 
   const missing = await fetch(`${baseUrl}/completed`, {
     method: "POST",
@@ -93,4 +106,36 @@ test("accepts arbitrary IDs and validates only that an ID is present", async () 
     body: "{}"
   });
   assert.equal(missing.status, 400);
+});
+
+test("logs accepted, duplicate, rejected, and completed submissions with worker IDs", async () => {
+  const messages = [];
+  const logger = {
+    info: (message) => messages.push(message),
+    warn: (message) => messages.push(message),
+    error: (message) => messages.push(message)
+  };
+  const baseUrl = await start(async () => {}, { logger });
+
+  await submit(baseUrl, "worker-a");
+  await submit(baseUrl, "worker-a");
+  await submit(baseUrl, "unknown-worker");
+  await submit(baseUrl, "worker-b");
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.ok(messages.some((message) => message.includes(
+    "Worker submission accepted: workerId=worker-a round=1 submissions=1/2"
+  )));
+  assert.ok(messages.some((message) => message.includes(
+    "Worker submission duplicate: workerId=worker-a round=1 submissions=1/2"
+  )));
+  assert.ok(messages.some((message) => message.includes(
+    "Worker submission rejected: workerId=unknown-worker reason=not_allowed"
+  )));
+  assert.ok(messages.some((message) => message.includes(
+    "Worker submission accepted: workerId=worker-b round=1 submissions=2/2"
+  )));
+  assert.ok(messages.some((message) => message.includes(
+    "Round completed: round=1 workerIds=worker-a,worker-b"
+  )));
 });

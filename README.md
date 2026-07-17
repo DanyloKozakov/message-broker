@@ -1,13 +1,20 @@
 # Two-worker message broker
 
-A dependency-free Node.js back end that coordinates two workers in repeating rounds. Worker IDs are opaque: there is no allow-list, authentication, or ID verification.
+A dependency-free Node.js back end that coordinates two allow-listed workers in repeating rounds.
 
 ## Run
 
 Requires Node.js 20 or newer.
 
 ```bash
-npm start
+ALLOWED_WORKER_IDS=worker-1,worker-2 npm start
+```
+
+PowerShell:
+
+```powershell
+$env:ALLOWED_WORKER_IDS="worker-1,worker-2"
+npm.cmd start
 ```
 
 The server listens on port `3000` by default. Set `PORT` to use another port.
@@ -23,7 +30,9 @@ Content-Type: application/json
 {"id":"worker-1"}
 ```
 
-The first distinct worker receives `status: "waiting"`. When a second distinct ID submits, the service repeatedly calls the configured IP-reset URL. It retries unsuccessful results, HTTP errors, invalid responses, and network errors. Repeating a worker submission is safe and does not count that worker twice.
+The first allowed worker receives `status: "waiting"`. When the other allowed ID submits, the service repeatedly calls the configured IP-reset URL. It retries unsuccessful results, HTTP errors, invalid responses, and network errors. Repeating a worker submission is safe and does not count that worker twice. Unknown IDs receive HTTP `403`.
+
+Render logs identify every accepted, duplicate, or rejected submission with its worker ID and round. Round completion and failure are logged as well.
 
 ### 2. Poll status
 
@@ -57,6 +66,7 @@ npm test
 
 | Environment variable | Default | Purpose |
 | --- | --- | --- |
+| `ALLOWED_WORKER_IDS` | Required | Exactly two comma-separated IDs, for example `worker-1,worker-2` |
 | `REFRESH_URL` | `http://g5ip.com:4128/apix/reset_ip_secure?hash=2da19977945b` | IP-reset endpoint |
 | `RETRY_DELAY_MS` | `2000` | Delay between attempts |
 | `REQUEST_TIMEOUT_MS` | `10000` | Timeout for each request |
