@@ -12,7 +12,7 @@ function positiveNumber(value, fallback) {
 export function createRefreshHandler({
   refreshUrl = DEFAULT_REFRESH_URL,
   retryDelayMs = 2_000,
-  requestTimeoutMs = 10_000,
+  requestTimeoutMs = 60_000,
   fetchImpl = globalThis.fetch,
   sleep = delay,
   logger = console
