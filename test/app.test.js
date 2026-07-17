@@ -45,10 +45,12 @@ test("waits for two distinct workers and for the handler to finish", async () =>
     accepted: true
   });
 
-  await submit(baseUrl, "worker-a");
+  const duplicate = await submit(baseUrl, "worker-a");
+  assert.equal((await duplicate.json()).submittedWorkers, 1);
   assert.equal(handlerCalls, 0, "a duplicate worker must not count twice");
 
-  await submit(baseUrl, "worker-b");
+  const second = await submit(baseUrl, "worker-b");
+  assert.equal(second.status, 202);
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(handlerCalls, 1);
 

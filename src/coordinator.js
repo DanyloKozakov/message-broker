@@ -17,7 +17,10 @@ export class WorkerCoordinator {
 
     // A retry from a worker already in the round is idempotent.
     if (round.workers.has(id)) {
-      return this.#publicState(round, id);
+      return {
+        ...this.#publicState(round, id),
+        accepted: true
+      };
     }
 
     if (round.workers.size >= this.workerCount) {

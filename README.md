@@ -23,7 +23,7 @@ Content-Type: application/json
 {"id":"worker-1"}
 ```
 
-The first distinct worker receives `status: "waiting"`. When a second distinct ID submits, the shared handler in `src/handler.js` runs once. Repeating the same request is safe and does not count the worker twice.
+The first distinct worker receives `status: "waiting"`. When a second distinct ID submits, the service repeatedly calls the configured IP-reset URL. It retries unsuccessful results, HTTP errors, invalid responses, and network errors. Repeating a worker submission is safe and does not count that worker twice.
 
 ### 2. Poll status
 
@@ -31,7 +31,7 @@ The first distinct worker receives `status: "waiting"`. When a second distinct I
 GET /status?id=worker-1
 ```
 
-This returns `status: "waiting"` while the service is waiting for the other worker and while the shared handler is running. It returns `status: "completed"` only after that handler resolves. At that point, new submissions go into the next round.
+This returns `status: "waiting"` while the service is waiting for the other worker and while the reset request is retrying. It returns `status: "completed"` only after the reset endpoint returns JSON with `{"result":"success"}`. At that point, new submissions go into the next round.
 
 Example completed response:
 
@@ -52,5 +52,13 @@ Example completed response:
 ```bash
 npm test
 ```
+
+## Configuration
+
+| Environment variable | Default | Purpose |
+| --- | --- | --- |
+| `REFRESH_URL` | `http://g5ip.com:4128/apix/reset_ip_secure?hash=2da19977945b` | IP-reset endpoint |
+| `RETRY_DELAY_MS` | `2000` | Delay between attempts |
+| `REQUEST_TIMEOUT_MS` | `10000` | Timeout for each request |
 
 This implementation keeps coordination state in memory. Restarting the process resets the current round.
